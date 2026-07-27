@@ -411,7 +411,7 @@ export const sendGraphqlSubscriptionRequest = async (item, collection, environme
 };
 
 /**
- * Sends a `complete` message for the active operation, leaving the socket open.
+ * Sends a `complete` message for the active operation, then closes the connection entirely.
  */
 export const unsubscribeGraphqlSubscription = async (requestId) => {
   return new Promise((resolve, reject) => {

@@ -59,7 +59,7 @@ const TypeIcon = ({ type }) => {
   }[type];
 };
 
-const WSMessageItem = memo(({ message, isOpen, onToggle }) => {
+const WSMessageItem = memo(({ message, messageKey, isOpen, onToggle }) => {
   const [showHex, setShowHex] = useState(false);
   const preferences = useSelector((state) => state.app.preferences);
   const { displayedTheme } = useTheme();
@@ -91,7 +91,7 @@ const WSMessageItem = memo(({ message, isOpen, onToggle }) => {
 
   const handleToggle = () => {
     if (!canOpenMessage) return;
-    onToggle?.();
+    onToggle?.(messageKey);
   };
 
   return (
@@ -236,7 +236,7 @@ const WSMessagesList = ({ messages = [] }) => {
   const renderItem = useCallback((_, msg) => {
     const key = getMessageKey(msg);
     const isOpen = openMessages.has(key);
-    return <WSMessageItem message={msg} isOpen={isOpen} onToggle={() => handleMessageToggle(key)} />;
+    return <WSMessageItem message={msg} messageKey={key} isOpen={isOpen} onToggle={handleMessageToggle} />;
   }, [openMessages, handleMessageToggle]);
 
   const computeItemKey = useCallback((_, msg) => {

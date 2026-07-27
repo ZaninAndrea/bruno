@@ -13,7 +13,7 @@ import { getOauth2AdditionalParameters } from './utils/oauth2-additional-params'
 // (encodeUrl, followRedirects, maxRedirects) unconditionally — ws-request and
 // graphql-subscription-request don't have those, so narrow down to the two
 // fields their schema actually allows.
-const pickWsSettings = (json: any): { timeout?: number; keepAliveInterval?: number } => {
+const pickTimeoutSettings = (json: any): { timeout?: number; keepAliveInterval?: number } => {
   const settings: { timeout?: number; keepAliveInterval?: number } = {};
   const timeout = _.get(json, 'settings.timeout');
   if (typeof timeout === 'number') {
@@ -134,7 +134,7 @@ export const parseBruRequest = (data: string | any, parsed: boolean = false): an
           }
         ])
       });
-      transformedJson.settings = pickWsSettings(json);
+      transformedJson.settings = pickTimeoutSettings(json);
     } else if (requestType === 'graphql-subscription-request') {
       transformedJson.request.auth.mode = _.get(json, 'graphqlSubscription.auth', 'none');
       transformedJson.request.body = {
@@ -148,7 +148,7 @@ export const parseBruRequest = (data: string | any, parsed: boolean = false): an
       delete (transformedJson.request as any).vars;
       delete (transformedJson.request as any).assertions;
       delete (transformedJson.request as any).tests;
-      transformedJson.settings = pickWsSettings(json);
+      transformedJson.settings = pickTimeoutSettings(json);
     } else {
       // For HTTP and GraphQL
       (transformedJson.request as any).params = _.get(json, 'params', []);

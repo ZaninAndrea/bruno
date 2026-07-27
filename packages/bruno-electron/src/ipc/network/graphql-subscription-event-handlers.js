@@ -1,5 +1,6 @@
-const { ipcMain, app } = require('electron');
+const { ipcMain } = require('electron');
 const { GraphQLSubscriptionClient } = require('@usebruno/requests');
+const { registerAppQuitTeardown } = require('./register-app-quit-teardown');
 const { cloneDeep, each, get } = require('lodash');
 const decomment = require('decomment');
 const { parse, getIntrospectionQuery } = require('graphql');
@@ -280,21 +281,7 @@ const registerGraphQLSubscriptionEventHandlers = (window) => {
 
   graphqlSubscriptionClient = new GraphQLSubscriptionClient(sendEvent);
 
-  if (app && typeof app.on === 'function') {
-    const teardown = () => {
-      if (graphqlSubscriptionClient && typeof graphqlSubscriptionClient.clearAllConnections === 'function') {
-        try {
-          graphqlSubscriptionClient.clearAllConnections();
-        } catch (error) {
-          console.error('Error clearing GraphQL subscription connections:', error);
-        }
-      }
-    };
-    // Both hooks are needed — on macOS window-all-closed does not quit the
-    // app, and a live socket keeps the event loop (and app) alive regardless.
-    app.on('window-all-closed', teardown);
-    app.on('before-quit', teardown);
-  }
+  registerAppQuitTeardown(graphqlSubscriptionClient, { label: 'GraphQL subscription' });
 
   ipcMain.handle(
     'renderer:gql-sub:connect',

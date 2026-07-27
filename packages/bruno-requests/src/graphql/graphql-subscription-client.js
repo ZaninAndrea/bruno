@@ -133,9 +133,10 @@ class GraphQLSubscriptionClient {
       return { success: false, error: 'Connection is closed' };
     }
 
-    if (record.activeOperationId) {
+    if (record.activeOperationId || record.pendingOperation) {
       // A connection carries exactly one operation; refuse a second subscribe
-      // rather than silently orphaning the first.
+      // rather than silently orphaning the first (including one still queued
+      // before ack).
       return { success: false, error: 'A subscription is already active on this connection' };
     }
 

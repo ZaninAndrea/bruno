@@ -28,10 +28,8 @@ export interface WebSocketItemSettings {
 }
 
 export interface GraphqlSubscriptionItemSettings {
-  settings?: {
-    timeout?: number | null;
-    keepAliveInterval?: number | null;
-  } | null;
+  timeout?: number | null;
+  keepAliveInterval?: number | null;
 }
 
 export type ItemSettings = HttpItemSettings | WebSocketItemSettings | GraphqlSubscriptionItemSettings | null;

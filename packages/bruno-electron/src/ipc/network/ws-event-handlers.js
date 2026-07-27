@@ -1,5 +1,6 @@
-const { ipcMain, app } = require('electron');
+const { ipcMain } = require('electron');
 const { WsClient } = require('@usebruno/requests');
+const { registerAppQuitTeardown } = require('./register-app-quit-teardown');
 const { safeParseJSON, safeStringifyJSON } = require('../../utils/common');
 const { cloneDeep, each, get } = require('lodash');
 const interpolateVars = require('./interpolate-vars');
@@ -299,21 +300,7 @@ const registerWsEventHandlers = (window) => {
 
   wsClient = new WsClient(sendEvent);
 
-  if (app && typeof app.on === 'function') {
-    const teardown = () => {
-      if (wsClient && typeof wsClient.clearAllConnections === 'function') {
-        try {
-          wsClient.clearAllConnections();
-        } catch (error) {
-          console.error('Error clearing WebSocket connections:', error);
-        }
-      }
-    };
-    // Both hooks are needed — on macOS window-all-closed does not quit the
-    // app, and a live socket keeps the event loop (and app) alive regardless.
-    app.on('window-all-closed', teardown);
-    app.on('before-quit', teardown);
-  }
+  registerAppQuitTeardown(wsClient, { label: 'WebSocket' });
 
   // Start a new WebSocket connection
   ipcMain.handle(

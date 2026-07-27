@@ -44,6 +44,15 @@ const { buildFormUrlEncodedPayload, isFormData, extractBoundaryFromContentType }
 
 const ERROR_OCCURRED_WHILE_EXECUTING_REQUEST = 'Error occurred while executing the request!';
 
+// gRPC, WebSocket and GraphQL subscription requests are long-lived transports driven
+// over their own IPC channels, not the HTTP runRequest/runner loop.
+const getLongLivedProtocolLabel = (itemType) => {
+  if (itemType === 'ws-request') return 'WebSocket';
+  if (itemType === 'grpc-request') return 'gRPC';
+  if (itemType === 'graphql-subscription-request') return 'GraphQL subscription';
+  return null;
+};
+
 const saveCookies = (url, headers) => {
   if (preferencesUtil.shouldStoreCookies()) {
     let setCookieHeaders = [];
@@ -758,8 +767,8 @@ const registerNetworkIpc = (mainWindow) => {
         if (_item) {
           // WS/gRPC/graphql-subscription items live on separate IPC channels and
           // can't be driven via the HTTP runRequest. Record a Skipped row so the user sees feedback.
-          if (_item.type === 'ws-request' || _item.type === 'grpc-request' || _item.type === 'graphql-subscription-request') {
-            const protocolLabel = _item.type === 'ws-request' ? 'WebSocket' : _item.type === 'grpc-request' ? 'gRPC' : 'GraphQL subscription';
+          const protocolLabel = getLongLivedProtocolLabel(_item.type);
+          if (protocolLabel) {
             const startedAt = Date.now();
             callerBru?._recordScriptedRequest?.({
               source: 'runRequest',
@@ -1445,8 +1454,8 @@ const registerNetworkIpc = (mainWindow) => {
           if (_item) {
             // WS/gRPC/graphql-subscription items live on separate IPC channels and
             // can't be driven via the HTTP runRequest. Record a Skipped row so the user sees feedback.
-            if (_item.type === 'ws-request' || _item.type === 'grpc-request' || _item.type === 'graphql-subscription-request') {
-              const protocolLabel = _item.type === 'ws-request' ? 'WebSocket' : _item.type === 'grpc-request' ? 'gRPC' : 'GraphQL subscription';
+            const protocolLabel = getLongLivedProtocolLabel(_item.type);
+            if (protocolLabel) {
               const startedAt = Date.now();
               callerBru?._recordScriptedRequest?.({
                 source: 'runRequest',
@@ -1640,8 +1649,8 @@ const registerNetworkIpc = (mainWindow) => {
 
           // Skip gRPC, WebSocket and GraphQL subscription requests — none of
           // these long-lived transports can be driven by the HTTP runner loop.
-          if (item.type === 'grpc-request' || item.type === 'ws-request' || item.type === 'graphql-subscription-request') {
-            const protocolLabel = item.type === 'grpc-request' ? 'gRPC' : item.type === 'ws-request' ? 'WebSocket' : 'GraphQL subscription';
+          const protocolLabel = getLongLivedProtocolLabel(item.type);
+          if (protocolLabel) {
             mainWindow.webContents.send('main:run-folder-event', {
               type: 'runner-request-skipped',
               error: `${protocolLabel} requests are skipped in folder/collection runs`,

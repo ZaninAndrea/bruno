@@ -59,7 +59,7 @@ const Timeline = ({ collection, item }) => {
     () => getEffectiveAuthSource(collection, item),
     [item, itemAuthMode, collection]
   );
-  const isGrpcRequest = item.type === 'grpc-request' || item.type === 'ws-request' || item.type === 'graphql-subscription-request';
+  const isLongLivedProtocolRequest = item.type === 'grpc-request' || item.type === 'ws-request' || item.type === 'graphql-subscription-request';
 
   const entries = useMemo(
     () => buildTimelineEntries(collection?.timeline, item.uid, authSource),
@@ -108,7 +108,7 @@ const Timeline = ({ collection, item }) => {
             const { data, timestamp, eventType } = entry;
             const { request, response, eventData = {}, timestamp: eventTimestamp = timestamp } = data;
 
-            if (isGrpcRequest) {
+            if (isLongLivedProtocolRequest) {
               return (
                 <div key={index} className="timeline-event" data-testid="timeline-item">
                   <GrpcTimelineItem
