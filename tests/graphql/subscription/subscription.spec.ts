@@ -22,16 +22,21 @@ test.describe.serial('graphql subscription', () => {
       await expect(locators.graphqlSubscription.connectionControls.unsubscribe()).toBeVisible({ timeout: 5000 });
     });
 
-    await test.step('at least two incoming frames arrive', async () => {
+    await test.step('the simplified message history shows Connected, the subscribe payload, and next payloads — no low-level protocol frames', async () => {
+      await expect(locators.graphqlSubscription.infoMessage('Connected')).toBeVisible({ timeout: 5000 });
       await expect(locators.graphqlSubscription.incomingMessages().first()).toBeAttached({ timeout: 5000 });
       await expect
-        .poll(async () => locators.websocket.messages().count(), { timeout: 5000 })
-        .toBeGreaterThanOrEqual(3); // connection_ack + subscribe echo + at least one `next`
+        .poll(async () => locators.graphqlSubscription.messages().count(), { timeout: 5000 })
+        .toBeGreaterThanOrEqual(3); // Connected + subscribe payload + at least one `next` payload
+      // connection_init/connection_ack are protocol handshake noise, never surfaced
+      await expect(locators.graphqlSubscription.messages().filter({ hasText: 'connection_ack' })).toHaveCount(0);
+      await expect(locators.graphqlSubscription.messages().filter({ hasText: 'connection_init' })).toHaveCount(0);
     });
 
     await test.step('unsubscribing closes the connection and reverts the button to Subscribe', async () => {
       await locators.graphqlSubscription.connectionControls.unsubscribe().click();
       await expect(locators.graphqlSubscription.connectionControls.subscribe()).toBeVisible({ timeout: 5000 });
+      await expect(locators.graphqlSubscription.infoMessage('Unsubscribed')).toBeVisible({ timeout: 5000 });
       await expect(locators.graphqlSubscription.infoMessages().filter({ hasText: 'Closed' }).last()).toBeVisible({ timeout: 5000 });
     });
 
@@ -57,6 +62,7 @@ test.describe.serial('graphql subscription', () => {
     // countdown ticks 3 times (300ms apart) then completes server-side —
     // no user unsubscribe click, the button should still revert on its own.
     await expect(locators.graphqlSubscription.connectionControls.subscribe()).toBeVisible({ timeout: 5000 });
+    await expect(locators.graphqlSubscription.infoMessage('Completed')).toBeVisible({ timeout: 5000 });
   });
 
   test('a mid-stream server error closes the connection and surfaces an error frame', async ({ pageWithUserData: page }) => {

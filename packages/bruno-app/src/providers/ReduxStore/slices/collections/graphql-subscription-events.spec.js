@@ -71,7 +71,7 @@ describe('graphqlSubscriptionResponseReceived', () => {
     expect(response.responses[0]).toMatchObject({ type: 'info' });
   });
 
-  test('frames are appended to responses tagged by direction, preserving seq', () => {
+  test('frames hides low-level protocol chatter (connection_init/ack, ping/pong)', () => {
     let state = withConnectedItem();
     state = reducer(state, graphqlSubscriptionResponseReceived({
       itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'frames',
@@ -79,15 +79,87 @@ describe('graphqlSubscriptionResponseReceived', () => {
         droppedCount: 0,
         frames: [
           { seq: 1, timestamp: 10, direction: 'outgoing', type: 'connection_init', message: null, raw: '{"type":"connection_init"}' },
-          { seq: 2, timestamp: 11, direction: 'incoming', type: 'connection_ack', message: { type: 'connection_ack' }, raw: '{"type":"connection_ack"}' }
+          { seq: 2, timestamp: 11, direction: 'incoming', type: 'connection_ack', message: { type: 'connection_ack' }, raw: '{"type":"connection_ack"}' },
+          { seq: 3, timestamp: 12, direction: 'outgoing', type: 'ping', message: null, raw: '{"type":"ping"}' },
+          { seq: 4, timestamp: 13, direction: 'incoming', type: 'pong', message: { type: 'pong' }, raw: '{"type":"pong"}' }
         ]
       }
     }));
 
     const { responses } = state.collections[0].items[0].response;
-    expect(responses).toHaveLength(2);
-    expect(responses[0]).toMatchObject({ type: 'outgoing', seq: 1 });
-    expect(responses[1]).toMatchObject({ type: 'incoming', seq: 2, message: { type: 'connection_ack' } });
+    expect(responses).toHaveLength(0);
+  });
+
+  test('frames shows only the payload of an outgoing subscribe frame', () => {
+    let state = withConnectedItem();
+    const raw = JSON.stringify({ id: '1', type: 'subscribe', payload: { query: 'subscription { tick }', variables: {} } });
+    state = reducer(state, graphqlSubscriptionResponseReceived({
+      itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'frames',
+      eventData: { droppedCount: 0, frames: [{ seq: 1, timestamp: 10, direction: 'outgoing', type: 'subscribe', message: null, raw }] }
+    }));
+
+    const { responses } = state.collections[0].items[0].response;
+    expect(responses).toHaveLength(1);
+    expect(responses[0]).toEqual({
+      type: 'outgoing',
+      message: { query: 'subscription { tick }', variables: {} },
+      timestamp: 10,
+      seq: 1
+    });
+  });
+
+  test('frames shows only the payload of an incoming next frame', () => {
+    let state = withConnectedItem();
+    state = reducer(state, graphqlSubscriptionResponseReceived({
+      itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'frames',
+      eventData: {
+        droppedCount: 0,
+        frames: [{
+          seq: 2, timestamp: 11, direction: 'incoming', type: 'next',
+          message: { id: '1', type: 'next', payload: { data: { tick: 1 } } },
+          raw: '{"id":"1","type":"next","payload":{"data":{"tick":1}}}'
+        }]
+      }
+    }));
+
+    const { responses } = state.collections[0].items[0].response;
+    expect(responses).toHaveLength(1);
+    expect(responses[0]).toEqual({ type: 'incoming', message: { data: { tick: 1 } }, timestamp: 11, seq: 2 });
+  });
+
+  test('frames shows only the payload of an incoming top-level error frame', () => {
+    let state = withConnectedItem();
+    const errors = [{ message: 'Syntax Error' }];
+    state = reducer(state, graphqlSubscriptionResponseReceived({
+      itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'frames',
+      eventData: {
+        droppedCount: 0,
+        frames: [{
+          seq: 3, timestamp: 12, direction: 'incoming', type: 'error',
+          message: { id: '1', type: 'error', payload: errors },
+          raw: JSON.stringify({ id: '1', type: 'error', payload: errors })
+        }]
+      }
+    }));
+
+    const { responses } = state.collections[0].items[0].response;
+    expect(responses).toHaveLength(1);
+    expect(responses[0]).toEqual({ type: 'error', message: errors, timestamp: 12, seq: 3 });
+  });
+
+  test('frames surfaces an unparsable frame as raw text rather than hiding it', () => {
+    let state = withConnectedItem();
+    state = reducer(state, graphqlSubscriptionResponseReceived({
+      itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'frames',
+      eventData: {
+        droppedCount: 0,
+        frames: [{ seq: 1, timestamp: 10, direction: 'incoming', type: 'unparsable', message: null, raw: 'not json' }]
+      }
+    }));
+
+    const { responses } = state.collections[0].items[0].response;
+    expect(responses).toHaveLength(1);
+    expect(responses[0]).toEqual({ type: 'error', message: 'not json', timestamp: 10, seq: 1 });
   });
 
   test('frames reports a dropped-frame notice when droppedCount is non-zero', () => {
@@ -127,19 +199,23 @@ describe('graphqlSubscriptionResponseReceived', () => {
     expect(response.statusText).toBe('ERROR');
   });
 
-  test('operation-state complete distinguishes server vs user initiator in statusText', () => {
+  test('operation-state complete distinguishes server vs user initiator in statusText and appends an info entry', () => {
     let state = withConnectedItem();
     state = reducer(state, graphqlSubscriptionResponseReceived({
       itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'operation-state',
-      eventData: { states: [{ type: 'complete', initiator: 'server' }] }
+      eventData: { states: [{ type: 'complete', initiator: 'server', timestamp: 1 }] }
     }));
-    expect(state.collections[0].items[0].response.statusText).toBe('COMPLETED');
+    let response = state.collections[0].items[0].response;
+    expect(response.statusText).toBe('COMPLETED');
+    expect(response.responses.at(-1)).toEqual({ type: 'info', message: 'Completed', timestamp: 1 });
 
     state = reducer(state, graphqlSubscriptionResponseReceived({
       itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'operation-state',
-      eventData: { states: [{ type: 'complete', initiator: 'user' }] }
+      eventData: { states: [{ type: 'complete', initiator: 'user', timestamp: 2 }] }
     }));
-    expect(state.collections[0].items[0].response.statusText).toBe('UNSUBSCRIBED');
+    response = state.collections[0].items[0].response;
+    expect(response.statusText).toBe('UNSUBSCRIBED');
+    expect(response.responses.at(-1)).toEqual({ type: 'info', message: 'Unsubscribed', timestamp: 2 });
   });
 
   test('operation-state started flips statusText back to CONNECTED after an unsubscribe', () => {

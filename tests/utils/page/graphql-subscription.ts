@@ -9,6 +9,11 @@ export const buildGraphqlSubscriptionCommonLocators = (page: Page) => ({
   incomingMessages: () => page.locator('.ws-message.ws-incoming'),
   errorMessages: () => page.locator('.ws-error'),
   infoMessages: () => page.locator('.ws-info'),
+  // Info-message text is a single word/phrase (e.g. "Connected"), but the row's own
+  // full text also includes an appended ISO timestamp with no separator — an exact
+  // match against `.message-content` avoids both that and cross-matching, e.g. a
+  // "Closed: Client unsubscribed" row satisfying a case-insensitive "Unsubscribed" filter.
+  infoMessage: (text: string) => page.locator('.ws-info').filter({ has: page.locator('.message-content', { hasText: new RegExp(`^${text}$`) }) }),
   connectionParams: () => page.getByTestId('graphql-subscription-connection-params').locator('.CodeMirror'),
   connectionParamsEditor: () => page.getByTestId('graphql-subscription-connection-params').locator('.CodeMirror-code'),
   tabs: {
