@@ -7,6 +7,7 @@ export const buildGraphqlSubscriptionCommonLocators = (page: Page) => ({
   },
   messages: () => page.locator('.ws-message'),
   incomingMessages: () => page.locator('.ws-message.ws-incoming'),
+  outgoingMessages: () => page.locator('.ws-message.ws-outgoing'),
   errorMessages: () => page.locator('.ws-error'),
   infoMessages: () => page.locator('.ws-info'),
   // Info-message text is a single word/phrase (e.g. "Connected"), but the row's own

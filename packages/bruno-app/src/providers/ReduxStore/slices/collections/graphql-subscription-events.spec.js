@@ -104,7 +104,7 @@ describe('graphqlSubscriptionResponseReceived', () => {
       type: 'outgoing',
       message: { query: 'subscription { tick }', variables: {} },
       timestamp: 10,
-      seq: 1
+      seq: 0
     });
   });
 
@@ -124,7 +124,7 @@ describe('graphqlSubscriptionResponseReceived', () => {
 
     const { responses } = state.collections[0].items[0].response;
     expect(responses).toHaveLength(1);
-    expect(responses[0]).toEqual({ type: 'incoming', message: { data: { tick: 1 } }, timestamp: 11, seq: 2 });
+    expect(responses[0]).toEqual({ type: 'incoming', message: { data: { tick: 1 } }, timestamp: 11, seq: 0 });
   });
 
   test('frames shows only the payload of an incoming top-level error frame', () => {
@@ -144,7 +144,7 @@ describe('graphqlSubscriptionResponseReceived', () => {
 
     const { responses } = state.collections[0].items[0].response;
     expect(responses).toHaveLength(1);
-    expect(responses[0]).toEqual({ type: 'error', message: errors, timestamp: 12, seq: 3 });
+    expect(responses[0]).toEqual({ type: 'error', message: errors, timestamp: 12, seq: 0 });
   });
 
   test('frames surfaces an unparsable frame as raw text rather than hiding it', () => {
@@ -159,7 +159,7 @@ describe('graphqlSubscriptionResponseReceived', () => {
 
     const { responses } = state.collections[0].items[0].response;
     expect(responses).toHaveLength(1);
-    expect(responses[0]).toEqual({ type: 'error', message: 'not json', timestamp: 10, seq: 1 });
+    expect(responses[0]).toEqual({ type: 'error', message: 'not json', timestamp: 10, seq: 0 });
   });
 
   test('frames reports a dropped-frame notice when droppedCount is non-zero', () => {
@@ -207,7 +207,7 @@ describe('graphqlSubscriptionResponseReceived', () => {
     }));
     let response = state.collections[0].items[0].response;
     expect(response.statusText).toBe('COMPLETED');
-    expect(response.responses.at(-1)).toEqual({ type: 'info', message: 'Completed', timestamp: 1 });
+    expect(response.responses.at(-1)).toEqual({ type: 'info', message: 'Completed', timestamp: 1, seq: 0 });
 
     state = reducer(state, graphqlSubscriptionResponseReceived({
       itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'operation-state',
@@ -215,7 +215,34 @@ describe('graphqlSubscriptionResponseReceived', () => {
     }));
     response = state.collections[0].items[0].response;
     expect(response.statusText).toBe('UNSUBSCRIBED');
-    expect(response.responses.at(-1)).toEqual({ type: 'info', message: 'Unsubscribed', timestamp: 2 });
+    expect(response.responses.at(-1)).toEqual({ type: 'info', message: 'Unsubscribed', timestamp: 2, seq: 1 });
+  });
+
+  test('every pushed entry gets a unique, monotonically increasing seq even when timestamps collide', () => {
+    // Two entries landing in the exact same millisecond (plausible for a burst of
+    // `next` frames, or an info entry pushed alongside one) must still get distinct
+    // seq values — WSMessagesList keys/tracks open-state per row by seq ?? timestamp.
+    let state = withConnectedItem();
+    state = reducer(state, graphqlSubscriptionResponseReceived({
+      itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'open',
+      eventData: { timestamp: 5 }
+    }));
+    state = reducer(state, graphqlSubscriptionResponseReceived({
+      itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'frames',
+      eventData: {
+        droppedCount: 0,
+        frames: [{
+          seq: 1, timestamp: 5, direction: 'incoming', type: 'next',
+          message: { id: '1', type: 'next', payload: { data: { tick: 1 } } },
+          raw: '{"id":"1","type":"next","payload":{"data":{"tick":1}}}'
+        }]
+      }
+    }));
+
+    const { responses } = state.collections[0].items[0].response;
+    expect(responses).toHaveLength(2);
+    expect(responses[0].timestamp).toBe(responses[1].timestamp);
+    expect(new Set(responses.map((r) => r.seq)).size).toBe(2);
   });
 
   test('operation-state started flips statusText back to CONNECTED after an unsubscribe', () => {

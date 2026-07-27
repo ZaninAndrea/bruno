@@ -255,6 +255,10 @@ const graphqlSubscriptionCloseCodes = {
 // its "Completed"/"Unsubscribed" wording comes from the operation-state channel
 // instead (see the `operation-state` case below). Only `subscribe`/`next`/`error`
 // keep their envelope's payload, since that's the part a user actually cares about.
+// `seq` is deliberately not carried over from the frame here — the reducer assigns
+// a fresh, response-history-wide seq to every entry it pushes (see pushResponse in
+// graphqlSubscriptionResponseReceived), since a frame's own per-connection seq can
+// collide with one independently assigned to an info entry (Connected/Closed/...).
 const buildGraphqlSubscriptionMessageEntry = (frame) => {
   switch (frame.type) {
     case 'subscribe': {
@@ -266,19 +270,19 @@ const buildGraphqlSubscriptionMessageEntry = (frame) => {
       } catch {
         payload = frame.raw;
       }
-      return { type: 'outgoing', message: payload, timestamp: frame.timestamp, seq: frame.seq };
+      return { type: 'outgoing', message: payload, timestamp: frame.timestamp };
     }
 
     case 'next':
-      return { type: 'incoming', message: frame.message?.payload ?? null, timestamp: frame.timestamp, seq: frame.seq };
+      return { type: 'incoming', message: frame.message?.payload ?? null, timestamp: frame.timestamp };
 
     case 'error':
-      return { type: 'error', message: frame.message?.payload ?? null, timestamp: frame.timestamp, seq: frame.seq };
+      return { type: 'error', message: frame.message?.payload ?? null, timestamp: frame.timestamp };
 
     case 'unparsable':
       // Hostile/non-JSON server output is an anomaly worth surfacing, unlike routine
       // protocol chatter — shown as raw text since there's no payload to extract.
-      return { type: 'error', message: frame.raw, timestamp: frame.timestamp, seq: frame.seq };
+      return { type: 'error', message: frame.raw, timestamp: frame.timestamp };
 
     default:
       return null;
@@ -4020,6 +4024,18 @@ export const collectionsSlice = createSlice({
         duration: Date.now() - (timestamp || Date.now())
       };
 
+      // Every entry pushed to `responses` in this (or any prior) dispatch gets a
+      // fresh seq continuing from the current history length. `timestamp` alone
+      // isn't a safe fallback key — multiple entries can land in the same
+      // millisecond (a burst of `next` frames, or an info entry pushed alongside
+      // one), and WSMessagesList keys/tracks open-state per row by `seq ?? timestamp`;
+      // a collision there means two unrelated rows share one open/closed state.
+      updatedResponse.responses ||= [];
+      let nextSeq = updatedResponse.responses.length;
+      const pushResponse = (entry) => {
+        updatedResponse.responses.push({ ...entry, seq: nextSeq++ });
+      };
+
       switch (eventType) {
         case 'connecting':
           updatedResponse.status = 'CONNECTING';
@@ -4032,37 +4048,26 @@ export const collectionsSlice = createSlice({
 
         case 'redirect':
           updatedResponse.requestHeaders = eventData.headers;
-          updatedResponse.responses ||= [];
-          updatedResponse.responses.push({
-            message: eventData.message,
-            type: 'info',
-            timestamp: eventData.timestamp
-          });
+          pushResponse({ message: eventData.message, type: 'info', timestamp: eventData.timestamp });
           break;
 
         case 'open':
           updatedResponse.status = 'CONNECTED';
           updatedResponse.statusText = 'CONNECTED';
           updatedResponse.statusCode = 0;
-          updatedResponse.responses ||= [];
-          updatedResponse.responses.push({
-            message: 'Connected',
-            type: 'info',
-            timestamp: eventData.timestamp
-          });
+          pushResponse({ message: 'Connected', type: 'info', timestamp: eventData.timestamp });
           break;
 
         // Wire frames drive the Messages tab, but as a simplified history rather
         // than the raw exchange — see buildGraphqlSubscriptionMessageEntry.
         case 'frames': {
-          updatedResponse.responses ||= [];
-          const frameEntries = (eventData.frames || [])
+          (eventData.frames || [])
             .map(buildGraphqlSubscriptionMessageEntry)
-            .filter(Boolean);
-          updatedResponse.responses = updatedResponse.responses.concat(frameEntries);
+            .filter(Boolean)
+            .forEach(pushResponse);
 
           if (eventData.droppedCount) {
-            updatedResponse.responses.push({
+            pushResponse({
               type: 'info',
               message: `${eventData.droppedCount} frame(s) dropped — buffer cap exceeded`,
               timestamp: Date.now()
@@ -4072,7 +4077,6 @@ export const collectionsSlice = createSlice({
         }
 
         case 'operation-state': {
-          updatedResponse.responses ||= [];
           (eventData.states || []).forEach((opState) => {
             if (opState.type === 'started') {
               // A (re)subscribe over an already-open connection doesn't get a fresh
@@ -4086,7 +4090,7 @@ export const collectionsSlice = createSlice({
             } else if (opState.type === 'complete') {
               const isUserInitiated = opState.initiator === 'user';
               updatedResponse.statusText = isUserInitiated ? 'UNSUBSCRIBED' : 'COMPLETED';
-              updatedResponse.responses.push({
+              pushResponse({
                 type: 'info',
                 message: isUserInitiated ? 'Unsubscribed' : 'Completed',
                 timestamp: opState.timestamp
@@ -4104,8 +4108,7 @@ export const collectionsSlice = createSlice({
           updatedResponse.statusDescription = reason;
           updatedResponse.isError = code !== 1000;
 
-          updatedResponse.responses ||= [];
-          updatedResponse.responses.push({
+          pushResponse({
             type: code === 1000 ? 'info' : 'error',
             message: reason && reason.trim().length ? ['Closed:', reason.trim()].join(' ') : 'Closed',
             timestamp: eventData.timestamp
@@ -4120,8 +4123,7 @@ export const collectionsSlice = createSlice({
           updatedResponse.status = 'ERROR';
           updatedResponse.statusText = 'ERROR';
 
-          updatedResponse.responses ||= [];
-          updatedResponse.responses.push({
+          pushResponse({
             type: 'error',
             message: errorDetails || 'GraphQL subscription error occurred',
             timestamp: eventData.timestamp

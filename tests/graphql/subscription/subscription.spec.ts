@@ -51,6 +51,43 @@ test.describe.serial('graphql subscription', () => {
     });
   });
 
+  test('opening multiple messages does not expand unrelated rows (e.g. the Connected info message)', async ({ pageWithUserData: page }) => {
+    const locators = buildCommonLocators(page);
+
+    // The previous test already opened on-counter as a tab (still open, same app
+    // instance) — disambiguate from that tab header by clicking the sidebar row.
+    await page.locator('span.item-name').filter({ hasText: 'on-counter' }).click();
+    await locators.graphqlSubscription.connectionControls.subscribe().click();
+    await expect(locators.graphqlSubscription.connectionControls.unsubscribe()).toBeVisible({ timeout: 5000 });
+
+    // Stop the stream as soon as the very first tick arrives — the message list
+    // is virtualized (Virtuoso) and auto-scrolls to the newest message, so leaving
+    // the subscription running any longer risks the Connected row (the very first
+    // entry) scrolling out of the rendered range before the test gets to it.
+    await expect
+      .poll(async () => locators.graphqlSubscription.incomingMessages().count(), { timeout: 5000 })
+      .toBeGreaterThanOrEqual(1);
+    await locators.graphqlSubscription.connectionControls.unsubscribe().click();
+    await expect(locators.graphqlSubscription.connectionControls.subscribe()).toBeVisible({ timeout: 5000 });
+
+    const connectedRow = locators.graphqlSubscription.infoMessage('Connected');
+    await expect(connectedRow).not.toHaveClass(/open/);
+
+    await locators.graphqlSubscription.outgoingMessages().first().click();
+    await locators.graphqlSubscription.incomingMessages().first().click();
+
+    await expect(locators.graphqlSubscription.outgoingMessages().first()).toHaveClass(/open/);
+    await expect(locators.graphqlSubscription.incomingMessages().first()).toHaveClass(/open/);
+    // Rows are keyed/tracked by seq, not by timestamp — an info row that shares a
+    // timestamp with a toggled row (or falls in the same recycled Virtuoso slot)
+    // must never inherit that row's open state. The two now-expanded rows (each a
+    // 300px CodeEditor) can push Connected out of Virtuoso's render window (it's
+    // unmounted, not just hidden, so scrollIntoViewIfNeeded on it can't help —
+    // scroll the list's own scroller to the top to bring it back into range).
+    await page.getByTestId('virtuoso-scroller').evaluate((el) => { el.scrollTop = 0; });
+    await expect(connectedRow).not.toHaveClass(/open/);
+  });
+
   test('a finite subscription completes on its own and the button reverts to Subscribe', async ({ pageWithUserData: page }) => {
     const locators = buildCommonLocators(page);
 
