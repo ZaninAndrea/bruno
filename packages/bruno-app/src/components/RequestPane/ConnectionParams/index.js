@@ -26,19 +26,21 @@ const ConnectionParams = ({ connectionParams, item, collection }) => {
   const onSave = () => dispatch(saveRequest(item.uid, collection.uid));
 
   return (
-    <CodeEditor
-      collection={collection}
-      value={connectionParams || ''}
-      theme={displayedTheme}
-      font={get(preferences, 'font.codeFont', 'default')}
-      fontSize={get(preferences, 'font.codeFontSize')}
-      onEdit={onEdit}
-      mode="application/json"
-      onRun={onRun}
-      onSave={onSave}
-      enableVariableHighlighting={true}
-      showHintsFor={['variables']}
-    />
+    <div className="h-full" data-testid="graphql-subscription-connection-params">
+      <CodeEditor
+        collection={collection}
+        value={connectionParams || ''}
+        theme={displayedTheme}
+        font={get(preferences, 'font.codeFont', 'default')}
+        fontSize={get(preferences, 'font.codeFontSize')}
+        onEdit={onEdit}
+        mode="application/json"
+        onRun={onRun}
+        onSave={onSave}
+        enableVariableHighlighting={true}
+        showHintsFor={['variables']}
+      />
+    </div>
   );
 };
 
