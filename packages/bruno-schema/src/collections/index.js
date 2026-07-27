@@ -606,15 +606,14 @@ const wsRequestSchema = Yup.object({
   .strict();
 
 const wsSettingsSchema = Yup.object({
-  settings: Yup.object({
-    timeout: Yup.number()
-      .default(500),
-    keepAliveInterval: Yup.number()
-      .default(0)
-  }).noUnknown(true)
-    .strict()
-    .nullable()
-});
+  timeout: Yup.number()
+    .default(500),
+  keepAliveInterval: Yup.number()
+    .default(0)
+})
+  .noUnknown(true)
+  .strict()
+  .nullable();
 
 const graphqlSubscriptionRequestSchema = Yup.object({
   url: requestUrlSchema,
@@ -633,15 +632,14 @@ const graphqlSubscriptionRequestSchema = Yup.object({
   .strict();
 
 const graphqlSubscriptionSettingsSchema = Yup.object({
-  settings: Yup.object({
-    timeout: Yup.number()
-      .default(500),
-    keepAliveInterval: Yup.number()
-      .default(0)
-  }).noUnknown(true)
-    .strict()
-    .nullable()
-});
+  timeout: Yup.number()
+    .default(500),
+  keepAliveInterval: Yup.number()
+    .default(0)
+})
+  .noUnknown(true)
+  .strict()
+  .nullable();
 
 const folderRootSchema = Yup.object({
   request: Yup.object({

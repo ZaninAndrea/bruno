@@ -5,6 +5,7 @@ import {
   encodeConnectionInit,
   encodeSubscribe,
   encodeComplete,
+  encodePing,
   encodePong,
   decodeFrame,
   describeCloseCode
@@ -55,6 +56,7 @@ class GraphQLSubscriptionClient {
 
     const {
       ackTimeout = DEFAULT_ACK_TIMEOUT_MS,
+      keepAliveInterval = 0,
       tls = {},
       agent
     } = options;
@@ -90,6 +92,8 @@ class GraphQLSubscriptionClient {
       flushTimer: null,
       ackTimer: null,
       closeWatchdogTimer: null,
+      keepAliveTimer: null,
+      keepAliveInterval,
       connectionParams: sanitizeConnectionParams(connectionParams)
     };
 
@@ -122,17 +126,17 @@ class GraphQLSubscriptionClient {
   subscribe(requestId, operation) {
     const record = this.connections.get(requestId);
     if (!record) {
-      return;
+      return { success: false, error: 'No connection found for this request' };
     }
 
     if (record.state === 'closed' || record.state === 'closing') {
-      return;
+      return { success: false, error: 'Connection is closed' };
     }
 
     if (record.activeOperationId) {
       // A connection carries exactly one operation; refuse a second subscribe
       // rather than silently orphaning the first.
-      return;
+      return { success: false, error: 'A subscription is already active on this connection' };
     }
 
     record.pendingOperation = operation;
@@ -140,6 +144,8 @@ class GraphQLSubscriptionClient {
     if (record.state === 'acked') {
       this.#sendSubscribe(requestId, record);
     }
+
+    return { success: true };
   }
 
   unsubscribe(requestId) {
@@ -211,14 +217,18 @@ class GraphQLSubscriptionClient {
     socket.on('open', () => {
       this.#writeFrame(requestId, record, encodeConnectionInit(record.connectionParams), MESSAGE_TYPES.CONNECTION_INIT);
 
-      record.ackTimer = setTimeout(() => {
-        this.#flush(requestId, record);
-        this.eventCallback('main:gql-sub:error', requestId, collectionUid, {
-          error: 'Timed out waiting for connection_ack',
-          timestamp: Date.now()
-        });
-        this.#terminateConnection(requestId, 4408, 'Connection Initialisation Timeout');
-      }, ackTimeout);
+      // ackTimeout === 0 means "no timeout" (matching ws-request's timeout convention) —
+      // leave the connection waiting for connection_ack indefinitely.
+      if (ackTimeout > 0) {
+        record.ackTimer = setTimeout(() => {
+          this.#flush(requestId, record);
+          this.eventCallback('main:gql-sub:error', requestId, collectionUid, {
+            error: 'Timed out waiting for connection_ack',
+            timestamp: Date.now()
+          });
+          this.#terminateConnection(requestId, 4408, 'Connection Initialisation Timeout');
+        }, ackTimeout);
+      }
     });
 
     socket.on('upgrade', (response) => {
@@ -281,6 +291,12 @@ class GraphQLSubscriptionClient {
         record.state = 'acked';
         this.#writeFrame(requestId, record, raw, decoded.type, decoded.id, 'incoming', decoded);
         this.#flush(requestId, record);
+
+        if (record.keepAliveInterval > 0) {
+          record.keepAliveTimer = setInterval(() => {
+            this.#writeFrame(requestId, record, encodePing(), MESSAGE_TYPES.PING);
+          }, record.keepAliveInterval);
+        }
 
         this.eventCallback('main:gql-sub:open', requestId, collectionUid, { timestamp: Date.now() });
 
@@ -466,6 +482,10 @@ class GraphQLSubscriptionClient {
     if (record.flushTimer) {
       clearTimeout(record.flushTimer);
       record.flushTimer = null;
+    }
+    if (record.keepAliveTimer) {
+      clearInterval(record.keepAliveTimer);
+      record.keepAliveTimer = null;
     }
   }
 

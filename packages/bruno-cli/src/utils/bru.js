@@ -120,10 +120,10 @@ const bruToJson = (bru) => {
       };
     } else if (requestType === 'graphql-subscription-request') {
       transformedJson.request.auth.mode = _.get(json, 'graphqlSubscription.auth', 'none');
-      transformedJson.request.body = _.get(json, 'body', {
+      transformedJson.request.body = {
         mode: 'graphql',
-        graphql: { query: '', variables: '' }
-      });
+        graphql: _.get(json, 'body.graphql', { query: '', variables: '' })
+      };
       transformedJson.request.connectionParams = _.get(json, 'graphqlSubscriptionConnectionParams', null) || null;
     } else {
       transformedJson.request.method = _.upperCase(_.get(json, 'http.method'));

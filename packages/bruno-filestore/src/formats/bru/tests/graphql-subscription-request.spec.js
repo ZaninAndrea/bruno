@@ -95,6 +95,33 @@ describe('bru graphql-subscription-request', () => {
     expect(reparsed.request.connectionParams).toBe('{"authToken": "{{token}}"}');
     expect(reparsed.request.body).toEqual(json.request.body);
     expect(reparsed.request.docs).toBe('some docs');
+    expect(reparsed.settings).toEqual({ timeout: 0, keepAliveInterval: 0 });
+  });
+
+  it('round-trips settings with keepAliveInterval: 0 and never includes HTTP-only settings fields', () => {
+    const json = {
+      type: 'graphql-subscription-request',
+      name: 'On Tick',
+      seq: 1,
+      tags: [],
+      request: {
+        url: 'wss://api.example.com/graphql',
+        headers: [],
+        auth: { mode: 'none' },
+        body: { mode: 'graphql', graphql: { query: 'subscription { tick }', variables: '{}' } },
+        connectionParams: null,
+        docs: ''
+      },
+      settings: { timeout: 0, keepAliveInterval: 0 }
+    };
+
+    const bru = stringifyBruRequest(json);
+    const reparsed = parseBruRequest(bru);
+
+    expect(reparsed.settings).toEqual({ timeout: 0, keepAliveInterval: 0 });
+    expect(reparsed.settings.encodeUrl).toBeUndefined();
+    expect(reparsed.settings.followRedirects).toBeUndefined();
+    expect(reparsed.settings.maxRedirects).toBeUndefined();
   });
 
   it('omits the connection-params block when unset', () => {

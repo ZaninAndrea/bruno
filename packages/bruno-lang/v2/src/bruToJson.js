@@ -592,7 +592,7 @@ const sem = grammar.createSemantics().addAttribute('ast', {
       _settings.maxRedirects = parsedSettings.maxRedirects;
     }
 
-    if (keepAliveInterval) {
+    if (keepAliveInterval !== undefined) {
       _settings.keepAliveInterval = keepAliveInterval;
     }
 

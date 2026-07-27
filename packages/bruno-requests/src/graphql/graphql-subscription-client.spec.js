@@ -224,6 +224,17 @@ describe('GraphQLSubscriptionClient', () => {
       expect(socket._closeCode).toBe(4408);
     });
 
+    it('ackTimeout: 0 means no timeout — the connection never auto-closes waiting for ack', () => {
+      client.connect({ request: buildRequest(), collection: buildCollection(), options: { ackTimeout: 0 } });
+      const socket = mockInstances.at(-1);
+      socket.emitOpen();
+
+      jest.advanceTimersByTime(60_000);
+
+      expect(eventsOn('main:gql-sub:error')).toHaveLength(0);
+      expect(socket._closeCode).toBeUndefined();
+    });
+
     it('closes with 4400 on anything but ack/ping/pong before ack, after emitting the offending frame', () => {
       client.connect({ request: buildRequest(), collection: buildCollection(), options: {} });
       const socket = mockInstances.at(-1);
@@ -333,6 +344,72 @@ describe('GraphQLSubscriptionClient', () => {
       expect(unparsable.message).toBeNull();
       expect(unparsable.raw).toBe('\x00\x01binary-garbage');
       expect(socket.readyState).toBe(MockWebSocket.OPEN);
+    });
+  });
+
+  describe('keep-alive', () => {
+    it('does not send ping frames when keepAliveInterval is unset', () => {
+      const socket = connectAndAck();
+      jest.advanceTimersByTime(60_000);
+
+      expect(socket.sent.some((frame) => JSON.parse(frame).type === 'ping')).toBe(false);
+    });
+
+    it('sends a ping frame on every keepAliveInterval tick once acked', () => {
+      client.connect({ request: buildRequest(), collection: buildCollection(), options: { keepAliveInterval: 5_000 } });
+      const socket = mockInstances.at(-1);
+      socket.emitOpen();
+      socket.emitMessage(JSON.stringify({ type: 'connection_ack' }));
+
+      jest.advanceTimersByTime(5_000);
+      expect(JSON.parse(socket.lastSent())).toEqual({ type: 'ping' });
+
+      jest.advanceTimersByTime(10_000);
+      const pings = socket.sent.filter((frame) => JSON.parse(frame).type === 'ping');
+      expect(pings).toHaveLength(3);
+    });
+
+    it('stops sending pings once the connection is terminated', () => {
+      client.connect({ request: buildRequest(), collection: buildCollection(), options: { keepAliveInterval: 5_000 } });
+      const socket = mockInstances.at(-1);
+      socket.emitOpen();
+      socket.emitMessage(JSON.stringify({ type: 'connection_ack' }));
+
+      client.disconnect('req-1');
+      const sentBeforeAdvance = socket.sent.length;
+      jest.advanceTimersByTime(30_000);
+
+      expect(socket.sent.length).toBe(sentBeforeAdvance);
+    });
+  });
+
+  describe('subscribe return value', () => {
+    it('returns success:false when there is no connection for the requestId', () => {
+      const result = client.subscribe('missing-req', { query: 'subscription { tick }' });
+      expect(result).toEqual({ success: false, error: expect.any(String) });
+    });
+
+    it('returns success:false when a second subscribe is attempted on an active operation', () => {
+      const socket = connectAndAck();
+      client.subscribe('req-1', { query: 'subscription { tick }' });
+
+      const result = client.subscribe('req-1', { query: 'subscription { otherTick }' });
+
+      expect(result).toEqual({ success: false, error: expect.any(String) });
+      expect(socket.sent.filter((frame) => JSON.parse(frame).type === 'subscribe')).toHaveLength(1);
+    });
+
+    it('returns success:true when queuing before ack and when sending after ack', () => {
+      client.connect({ request: buildRequest(), collection: buildCollection(), options: {} });
+      const socket = mockInstances.at(-1);
+      socket.emitOpen();
+
+      expect(client.subscribe('req-1', { query: 'subscription { tick }' })).toEqual({ success: true });
+
+      socket.emitMessage(JSON.stringify({ type: 'connection_ack' }));
+      client.unsubscribe('req-1');
+
+      expect(client.subscribe('req-1', { query: 'subscription { tick }' })).toEqual({ success: true });
     });
   });
 

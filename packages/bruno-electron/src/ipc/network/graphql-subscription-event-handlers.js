@@ -238,6 +238,8 @@ const introspectGraphQLSubscriptionSchema = (preparedRequest, tlsOptions) => {
       } else if (channel === 'main:gql-sub:error') {
         const [, , { error }] = args;
         settle(reject, new Error(error || 'Introspection connection failed'));
+      } else if (channel === 'main:gql-sub:close') {
+        settle(reject, new Error('Introspection connection closed before a result arrived'));
       }
     });
 
@@ -318,7 +320,8 @@ const registerGraphQLSubscriptionEventHandlers = (window) => {
           request: preparedRequest,
           collection,
           options: {
-            ackTimeout: settings.timeout > 0 ? settings.timeout : undefined,
+            ackTimeout: settings.timeout,
+            keepAliveInterval: settings.keepAliveInterval,
             tls: {
               rejectUnauthorized: preferencesUtil.shouldVerifyTls(),
               ca: httpsAgentRequestFields.ca,
@@ -369,15 +372,13 @@ const registerGraphQLSubscriptionEventHandlers = (window) => {
         const itemCopy = cloneDeep(item);
         const preparedRequest = await prepareGraphQLSubscriptionRequest(itemCopy, collection, environment, runtimeVariables);
 
-        graphqlSubscriptionClient.subscribe(preparedRequest.uid, {
+        return graphqlSubscriptionClient.subscribe(preparedRequest.uid, {
           query: preparedRequest.data.query,
           operationName: preparedRequest.operationName,
           variables: preparedRequest.data.variables && Object.keys(preparedRequest.data.variables).length
             ? preparedRequest.data.variables
             : undefined
         });
-
-        return { success: true };
       } catch (error) {
         console.error('Error subscribing to GraphQL subscription:', error);
         return { success: false, error: error.message };

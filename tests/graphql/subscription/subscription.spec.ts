@@ -23,7 +23,7 @@ test.describe.serial('graphql subscription', () => {
     });
 
     await test.step('at least two incoming frames arrive', async () => {
-      await expect(page.locator('.ws-message.ws-incoming').first()).toBeAttached({ timeout: 5000 });
+      await expect(locators.graphqlSubscription.incomingMessages().first()).toBeAttached({ timeout: 5000 });
       await expect
         .poll(async () => locators.websocket.messages().count(), { timeout: 5000 })
         .toBeGreaterThanOrEqual(3); // connection_ack + subscribe echo + at least one `next`
@@ -59,6 +59,6 @@ test.describe.serial('graphql subscription', () => {
     // The failing subscription throws mid-stream; the reference server closes
     // the socket, so the button reverts to Subscribe without a user click.
     await expect(locators.graphqlSubscription.connectionControls.subscribe()).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('.ws-error').first()).toBeAttached({ timeout: 5000 });
+    await expect(locators.graphqlSubscription.errorMessages().first()).toBeAttached({ timeout: 5000 });
   });
 });

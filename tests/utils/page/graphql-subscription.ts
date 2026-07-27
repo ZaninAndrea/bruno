@@ -6,6 +6,8 @@ export const buildGraphqlSubscriptionCommonLocators = (page: Page) => ({
     unsubscribe: () => page.getByTestId('gql-sub-unsubscribe-button')
   },
   messages: () => page.locator('.ws-message'),
+  incomingMessages: () => page.locator('.ws-message.ws-incoming'),
+  errorMessages: () => page.locator('.ws-error'),
   connectionParams: () => page.getByTestId('graphql-subscription-connection-params').locator('.CodeMirror'),
   connectionParamsEditor: () => page.getByTestId('graphql-subscription-connection-params').locator('.CodeMirror-code'),
   tabs: {

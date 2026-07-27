@@ -39,6 +39,22 @@ settings {
       expect(output).toEqual(expected);
     });
 
+    it('preserves an explicit keepAliveInterval: 0 rather than dropping it as falsy', () => {
+      const input = `
+settings {
+      timeout: 0
+      keepAliveInterval: 0
+}
+`;
+
+      const output = parser(input);
+      expect(output.settings).toEqual({
+        encodeUrl: false,
+        timeout: 0,
+        keepAliveInterval: 0
+      });
+    });
+
     it('parses a single message flagged with selected: true', () => {
       const input = `
 body:ws {
