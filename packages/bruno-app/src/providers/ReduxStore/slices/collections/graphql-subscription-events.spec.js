@@ -142,6 +142,25 @@ describe('graphqlSubscriptionResponseReceived', () => {
     expect(state.collections[0].items[0].response.statusText).toBe('UNSUBSCRIBED');
   });
 
+  test('operation-state started flips statusText back to CONNECTED after an unsubscribe', () => {
+    let state = withConnectedItem();
+    state = reducer(state, graphqlSubscriptionResponseReceived({
+      itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'operation-state',
+      eventData: { states: [{ type: 'complete', initiator: 'user' }] }
+    }));
+    expect(state.collections[0].items[0].response.statusText).toBe('UNSUBSCRIBED');
+
+    // Resubscribing over the same (already-acked) connection never re-fires 'open' —
+    // 'started' is the only signal that the UI can rely on to flip back to subscribed.
+    state = reducer(state, graphqlSubscriptionResponseReceived({
+      itemUid: ITEM_UID, collectionUid: COLLECTION_UID, eventType: 'operation-state',
+      eventData: { states: [{ type: 'started' }] }
+    }));
+    const response = state.collections[0].items[0].response;
+    expect(response.status).toBe('CONNECTED');
+    expect(response.statusText).toBe('CONNECTED');
+  });
+
   test('close with a non-1000 code marks the response as an error and describes the code', () => {
     let state = withConnectedItem();
     state = reducer(state, graphqlSubscriptionResponseReceived({

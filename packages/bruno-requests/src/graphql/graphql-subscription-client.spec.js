@@ -324,6 +324,22 @@ describe('GraphQLSubscriptionClient', () => {
       expect(socket.readyState).toBe(MockWebSocket.OPEN);
     });
 
+    it('emits a started state on every subscribe, including a resubscribe over an already-acked connection', () => {
+      const socket = connectAndAck();
+      client.subscribe('req-1', { query: 'subscription { tick }' });
+      expect(lastState()).toMatchObject({ type: 'started' });
+
+      client.unsubscribe('req-1');
+      expect(lastState()).toMatchObject({ type: 'complete', initiator: 'user' });
+
+      // Resubscribing without a reconnect never re-triggers 'main:gql-sub:open' — the
+      // renderer relies on this 'started' state to flip its "subscribed" UI back on.
+      const result = client.subscribe('req-1', { query: 'subscription { tick }' });
+      expect(result).toEqual({ success: true });
+      expect(lastState()).toMatchObject({ type: 'started' });
+      expect(JSON.parse(socket.lastSent())).toEqual({ id: '2', type: 'subscribe', payload: { query: 'subscription { tick }' } });
+    });
+
     it('answers a post-ack ping with pong', () => {
       const socket = connectAndAck();
       socket.emitMessage(JSON.stringify({ type: 'ping' }));

@@ -33,6 +33,16 @@ test.describe.serial('graphql subscription', () => {
       await locators.graphqlSubscription.connectionControls.unsubscribe().click();
       await expect(locators.graphqlSubscription.connectionControls.subscribe()).toBeVisible({ timeout: 5000 });
     });
+
+    await test.step('resubscribing over the still-open connection flips back to Unsubscribe', async () => {
+      await locators.graphqlSubscription.connectionControls.subscribe().click();
+      await expect(locators.graphqlSubscription.connectionControls.unsubscribe()).toBeVisible({ timeout: 5000 });
+    });
+
+    await test.step('unsubscribing again works — the button does not get stuck on Subscribe', async () => {
+      await locators.graphqlSubscription.connectionControls.unsubscribe().click();
+      await expect(locators.graphqlSubscription.connectionControls.subscribe()).toBeVisible({ timeout: 5000 });
+    });
   });
 
   test('a finite subscription completes on its own and the button reverts to Subscribe', async ({ pageWithUserData: page }) => {

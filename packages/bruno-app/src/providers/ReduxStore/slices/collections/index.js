@@ -4040,7 +4040,12 @@ export const collectionsSlice = createSlice({
 
         case 'operation-state': {
           (eventData.states || []).forEach((opState) => {
-            if (opState.type === 'error') {
+            if (opState.type === 'started') {
+              // A (re)subscribe over an already-open connection doesn't get a fresh
+              // 'open' event, so this is what flips the UI back to "subscribed".
+              updatedResponse.status = 'CONNECTED';
+              updatedResponse.statusText = 'CONNECTED';
+            } else if (opState.type === 'error') {
               updatedResponse.isError = true;
               updatedResponse.error = JSON.stringify(opState.errors);
               updatedResponse.statusText = 'ERROR';

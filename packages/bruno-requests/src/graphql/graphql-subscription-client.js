@@ -211,6 +211,12 @@ class GraphQLSubscriptionClient {
     record.activeOperationId = operationId;
 
     this.#writeFrame(requestId, record, encodeSubscribe(operationId, operation), 'subscribe', operationId);
+
+    // A resubscribe over an already-acked connection (subscribe -> unsubscribe -> subscribe
+    // again) never re-triggers 'main:gql-sub:open' — that only fires on connect. Without this,
+    // the renderer's "subscribed" status (derived from statusText) stays stuck at whatever the
+    // previous operation left it at (e.g. UNSUBSCRIBED), so the UI can never unsubscribe again.
+    this.#emitOperationState(requestId, record, { type: 'started' }, { immediate: true });
   }
 
   #setupSocketEventHandlers(socket, requestId, collectionUid, record, ackTimeout) {
