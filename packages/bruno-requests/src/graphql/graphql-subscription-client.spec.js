@@ -312,7 +312,7 @@ describe('GraphQLSubscriptionClient', () => {
       expect(socket.readyState).toBe(MockWebSocket.OPEN);
     });
 
-    it('leaves the socket open on user unsubscribe, writes a complete frame, and tags initiator as user', () => {
+    it('writes a complete frame, tags initiator as user, and closes the connection entirely', () => {
       const socket = connectAndAck();
       client.subscribe('req-1', { query: 'subscription { tick }' });
 
@@ -321,19 +321,31 @@ describe('GraphQLSubscriptionClient', () => {
       expect(JSON.parse(socket.lastSent())).toEqual({ id: '1', type: 'complete' });
       const state = lastState();
       expect(state).toMatchObject({ type: 'complete', initiator: 'user' });
-      expect(socket.readyState).toBe(MockWebSocket.OPEN);
+
+      // Unlike a server-initiated complete, a user unsubscribe closes the socket —
+      // the next Subscribe click must perform a fresh connection_init handshake
+      // rather than resubscribing over stale connection state.
+      expect(socket.readyState).toBe(MockWebSocket.CLOSING);
+      expect(socket._closeCode).toBe(1000);
+      expect(client.isConnectionActive('req-1')).toBe(false);
+      expect(client.getActiveConnectionIds()).not.toContain('req-1');
+
+      const result = client.subscribe('req-1', { query: 'subscription { tick }' });
+      expect(result).toEqual({ success: false, error: expect.any(String) });
     });
 
-    it('emits a started state on every subscribe, including a resubscribe over an already-acked connection', () => {
+    it('emits a started state on every subscribe, including a resubscribe over a connection the server left open', () => {
       const socket = connectAndAck();
       client.subscribe('req-1', { query: 'subscription { tick }' });
       expect(lastState()).toMatchObject({ type: 'started' });
 
-      client.unsubscribe('req-1');
-      expect(lastState()).toMatchObject({ type: 'complete', initiator: 'user' });
+      // Server-initiated complete (unlike a user unsubscribe) leaves the socket open,
+      // so a resubscribe never reconnects — 'started' is what flips the UI back on.
+      socket.emitMessage(JSON.stringify({ id: '1', type: 'complete' }));
+      jest.runOnlyPendingTimers();
+      expect(lastState()).toMatchObject({ type: 'complete', initiator: 'server' });
+      expect(socket.readyState).toBe(MockWebSocket.OPEN);
 
-      // Resubscribing without a reconnect never re-triggers 'main:gql-sub:open' — the
-      // renderer relies on this 'started' state to flip its "subscribed" UI back on.
       const result = client.subscribe('req-1', { query: 'subscription { tick }' });
       expect(result).toEqual({ success: true });
       expect(lastState()).toMatchObject({ type: 'started' });
@@ -420,12 +432,13 @@ describe('GraphQLSubscriptionClient', () => {
       const socket = mockInstances.at(-1);
       socket.emitOpen();
 
+      // queuing before ack
       expect(client.subscribe('req-1', { query: 'subscription { tick }' })).toEqual({ success: true });
-
       socket.emitMessage(JSON.stringify({ type: 'connection_ack' }));
-      client.unsubscribe('req-1');
 
-      expect(client.subscribe('req-1', { query: 'subscription { tick }' })).toEqual({ success: true });
+      // sending immediately on an already-acked connection
+      connectAndAck(buildRequest({ uid: 'req-2' }));
+      expect(client.subscribe('req-2', { query: 'subscription { tick }' })).toEqual({ success: true });
     });
   });
 

@@ -162,6 +162,12 @@ class GraphQLSubscriptionClient {
       type: 'complete',
       initiator: 'user'
     }, { immediate: true });
+
+    // A user-initiated unsubscribe closes the connection entirely — rather than
+    // leaving the socket open for a future resubscribe — so the next Subscribe click
+    // always performs a fresh handshake (connection_init/connection_ack) instead of
+    // reusing stale connection state.
+    this.#terminateConnection(requestId, 1000, 'Client unsubscribed');
   }
 
   disconnect(requestId, code = 1000, reason = 'Client initiated disconnect') {

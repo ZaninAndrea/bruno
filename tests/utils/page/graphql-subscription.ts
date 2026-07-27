@@ -8,6 +8,7 @@ export const buildGraphqlSubscriptionCommonLocators = (page: Page) => ({
   messages: () => page.locator('.ws-message'),
   incomingMessages: () => page.locator('.ws-message.ws-incoming'),
   errorMessages: () => page.locator('.ws-error'),
+  infoMessages: () => page.locator('.ws-info'),
   connectionParams: () => page.getByTestId('graphql-subscription-connection-params').locator('.CodeMirror'),
   connectionParamsEditor: () => page.getByTestId('graphql-subscription-connection-params').locator('.CodeMirror-code'),
   tabs: {

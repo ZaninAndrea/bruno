@@ -10,7 +10,7 @@ test.describe.serial('graphql subscription', () => {
     await expect(page.locator('span.item-name').filter({ hasText: 'on-failing' })).toBeVisible();
   });
 
-  test('subscribing streams incoming frames, and unsubscribing stops them without closing the connection', async ({ pageWithUserData: page }) => {
+  test('subscribing streams incoming frames, and unsubscribing closes the connection', async ({ pageWithUserData: page }) => {
     const locators = buildCommonLocators(page);
 
     await test.step('open the request and subscribe', async () => {
@@ -29,12 +29,13 @@ test.describe.serial('graphql subscription', () => {
         .toBeGreaterThanOrEqual(3); // connection_ack + subscribe echo + at least one `next`
     });
 
-    await test.step('unsubscribing stops the stream and reverts the button to Subscribe', async () => {
+    await test.step('unsubscribing closes the connection and reverts the button to Subscribe', async () => {
       await locators.graphqlSubscription.connectionControls.unsubscribe().click();
       await expect(locators.graphqlSubscription.connectionControls.subscribe()).toBeVisible({ timeout: 5000 });
+      await expect(locators.graphqlSubscription.infoMessages().filter({ hasText: 'Closed' }).last()).toBeVisible({ timeout: 5000 });
     });
 
-    await test.step('resubscribing over the still-open connection flips back to Unsubscribe', async () => {
+    await test.step('resubscribing performs a fresh connection and flips back to Unsubscribe', async () => {
       await locators.graphqlSubscription.connectionControls.subscribe().click();
       await expect(locators.graphqlSubscription.connectionControls.unsubscribe()).toBeVisible({ timeout: 5000 });
     });
